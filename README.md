@@ -1,14 +1,3 @@
-```python
-import os  # Provides functions to interact with the operating system, such as reading file names in directories
-import json  # Used to read and parse JSON files, especially for country name mappings
-import numpy as np  # Provides support for efficient numerical operations and array manipulations
-import pandas as pd  # Enables structured data manipulation using DataFrames
-from PIL import Image  # Part of the Pillow library, used for loading and processing image files
-import seaborn as sns  # Built on top of matplotlib, used for more attractive and informative statistical graphics
-import matplotlib.pyplot as plt  # For plotting charts and images
-import cv2  # For advanced image processing 
-```
-
 ### DataLoader Class
 
 This class handles the loading and preprocessing of flag images from a specified folder, optionally mapping filenames to full country names using a JSON file.
@@ -40,44 +29,6 @@ This class handles the loading and preprocessing of flag images from a specified
 
 - **`get_data(self)`**  
   Public method. Returns two lists: the loaded image data and the corresponding list of country names.
-
-
-```python
-# -------------------------
-# DataLoader Class
-# -------------------------
-class DataLoader:
-    def __init__(self, folder_path, country_json_path=None):
-        self._folder_path = folder_path
-        self._images = []
-        self._image_names = []
-        self._country_map = self._load_country_mapping(country_json_path) if country_json_path else {}
-
-    def _load_country_mapping(self, path):
-        with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-
-    def _convert_filename_to_country(self, filename):
-        code = filename.split('.')[0].upper()
-        return self._country_map.get(code, filename)
-
-    def load_images(self, resize_shape=(100, 100)):
-        for filename in os.listdir(self._folder_path):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                try:
-                    img_path = os.path.join(self._folder_path, filename)
-                    img = Image.open(img_path).convert('RGB')
-                    img = img.resize(resize_shape)
-                    img_array = np.array(img)
-                    self._images.append(img_array)
-                    display_name = self._convert_filename_to_country(filename)
-                    self._image_names.append(display_name)
-                except Exception as e:
-                    print(f"Error loading image {filename}: {e}")
-
-    def get_data(self):
-        return self._images, self._image_names
-```
 
 ### FeatureExtractor Class
 
@@ -114,99 +65,6 @@ This class is responsible for extracting statistical and structural features fro
   - Aspect ratio (width / height)
   - Symbol presence score via `_has_symbol`
   - Returns: A `pandas.DataFrame` with all features per flag
-
-
-```python
-# -------------------------
-# FeatureExtractor Class
-# -------------------------
-class FeatureExtractor:
-    def __init__(self, images, image_names):
-        self._images = images
-        self._image_names = image_names
-
-    def _has_symbol(self, img):
-        """
-        Detects presence of a symbol using visual volatility (column & row pixel changes).
-        Returns:
-        - 1.0 if symbol is clearly detected in both directions
-        - 0.5 if detected in one direction
-        - 0.0 if no symbol pattern is found
-        """
-        rows, cols, _ = img.shape
-
-        def analyze_axis(data, axis_len, axis='column'):
-            features = []
-            for i in range(axis_len):
-                change_count = 0
-                change_magnitude = []
-
-                for j in range(1, data.shape[1]):
-                    if axis == 'column':
-                        prev = data[j - 1, i].astype(np.int16)
-                        curr = data[j, i].astype(np.int16)
-                    else:
-                        prev = data[i, j - 1].astype(np.int16)
-                        curr = data[i, j].astype(np.int16)
-
-                    diff = np.linalg.norm(curr - prev)
-                    if diff > 20:
-                        change_count += 1
-                        change_magnitude.append(diff)
-
-                volatility = np.std(change_magnitude) if change_magnitude else 0
-                features.append((change_count, volatility))
-
-            change_counts = np.array([f[0] for f in features])
-            volatilities = np.array([f[1] for f in features])
-            median_changes = np.median(change_counts)
-            median_volatility = np.median(volatilities)
-
-            outliers = sum(
-                abs(change_counts[i] - median_changes) > 3 and 
-                abs(volatilities[i] - median_volatility) > 15 
-                for i in range(axis_len)
-            )
-            return outliers / axis_len > 0.1
-
-        vertical_result = analyze_axis(img, cols, axis='column')
-        horizontal_result = analyze_axis(img, rows, axis='row')
-
-        if vertical_result and horizontal_result:
-            return 1.0
-        elif vertical_result or horizontal_result:
-            return 0.5
-        else:
-            return 0.0
-
-    def extract_features(self):
-        """
-        Public method to extract mean/std RGB, colorfulness, aspect ratio, and symbol detection.
-        Returns a pandas DataFrame with features for all images.
-        """
-        features = []
-        for img, name in zip(self._images, self._image_names):
-            mean_color = np.mean(img, axis=(0, 1))
-            std_color = np.std(img, axis=(0, 1))
-            colorfulness = np.linalg.norm(mean_color)
-            aspect_ratio = img.shape[1] / img.shape[0]
-            symbol_present = self._has_symbol(img)
-
-            features.append({
-                'country': name,
-                'mean_r': mean_color[0],
-                'mean_g': mean_color[1],
-                'mean_b': mean_color[2],
-                'std_r': std_color[0],
-                'std_g': std_color[1],
-                'std_b': std_color[2],
-                'colorfulness': colorfulness,
-                'aspect_ratio': aspect_ratio,
-                'has_symbol': symbol_present
-            })
-
-        return pd.DataFrame(features)
-```
 
 ### Visualizer Class
 
@@ -285,200 +143,6 @@ The `Visualizer` class provides an interface for visualizing key metrics and rel
   Helps analyze whether flags with symbols tend to be more or less colorful.
 
 
-
-```python
-# -------------------------
-# Visualizer Class
-# -------------------------
-class Visualizer:
-    def __init__(self, df):
-        self._df = df  # this is protected, allows subclassing or internal access but not meant for public manipulation
-
-    def plot_histogram(self, column):
-        # Plot histogram for a given numeric column
-        plt.figure(figsize=(8, 5))
-        sns.histplot(self._df[column], kde=True)
-        plt.title(f'Histogram of {column}')
-        plt.xlabel(column)
-        plt.ylabel('Frequency')
-        plt.show()
-
-    def plot_histograms(self):
-        # Plot multiple histograms for important numeric features
-        self.plot_histogram('colorfulness')
-        self.plot_histogram('brightness')
-
-    def plot_scatter(self, x, y):
-        # Scatter plot between two columns
-        plt.figure(figsize=(8, 5))
-        sns.scatterplot(data=self._df, x=x, y=y)
-        plt.title(f'{y} vs {x}')
-        plt.xlabel(x)
-        plt.ylabel(y)
-        plt.show()
-
-    def plot_relationships(self):
-        # Plot relationships between RGB and colorfulness
-        self.plot_scatter('mean_r', 'mean_b')
-        self.plot_pairplot()
-
-    def plot_box(self, column):
-        # Boxplot for a specific column
-        plt.figure(figsize=(8, 5))
-        sns.boxplot(x=self._df[column])
-        plt.title(f'Boxplot of {column}')
-        plt.show()
-
-    def plot_bar_mean_brightness(self):
-        # Horizontal bar plot of top 20 brightest flags
-        sorted_df = self._df.sort_values('brightness', ascending=False)
-        plt.figure(figsize=(12, 6))
-        sns.barplot(data=sorted_df.head(20), x='country', y='brightness')
-        plt.xticks(rotation=90)
-        plt.title('Top 20 Brightest Flags')
-        plt.ylabel('Brightness')
-        plt.xlabel('Country')
-        plt.show()
-
-    def plot_pairplot(self):
-        # Pairplot between RGB mean values and colorfulness
-        sns.pairplot(self._df[['mean_r', 'mean_g', 'mean_b', 'colorfulness']])
-        plt.show()
-
-    def plot_top_colorful_flags(self):
-        # Bar chart of top 20 most colorful flags
-        sorted_df = self._df.sort_values('colorfulness', ascending=False)
-        plt.figure(figsize=(12, 6))
-        sns.barplot(data=sorted_df.head(20), x='country', y='colorfulness')
-        plt.xticks(rotation=90)
-        plt.title('Top 20 Most Colorful Flags')
-        plt.ylabel('Colorfulness')
-        plt.xlabel('Country')
-        plt.show()
-
-    def plot_top_flags(self):
-        # Plot both brightness and colorful rankings
-        self.plot_bar_mean_brightness()
-        self.plot_top_colorful_flags()
-
-    def find_top_red_flags(self):
-        red_flags = self._df[self._df['dominant_color'] == 'Red'].sort_values('mean_r', ascending=False)
-        print("Top 10 Red Dominant Flags:")
-        print(red_flags[['country', 'mean_r']].head(10))
-
-    def find_top_blue_flags(self):
-        blue_flags = self._df[self._df['dominant_color'] == 'Blue'].sort_values('mean_b', ascending=False)
-        print("Top 10 Blue Dominant Flags:")
-        print(blue_flags[['country', 'mean_b']].head(10))
-
-    def cluster_flags(self):
-        from sklearn.cluster import KMeans
-        features = self._df[['mean_r', 'mean_g', 'mean_b', 'colorfulness']]
-        kmeans = KMeans(n_clusters=4, random_state=0)
-        self._df['cluster'] = kmeans.fit_predict(features)
-        print("Cluster Assignments:")
-        print(self._df[['country', 'cluster']].head())
-
-        # Plot cluster visualization
-        plt.figure(figsize=(8, 6))
-        sns.scatterplot(data=self._df, x='mean_r', y='mean_b', hue='cluster', palette='tab10')
-        plt.title('Clusters of Flags based on Colors')
-        plt.xlabel('Mean Red')
-        plt.ylabel('Mean Blue')
-        plt.show()
-
-    def find_most_variable_flags(self):
-        # Calculate average standard deviation across RGB channels
-        most_variable = self._df.copy()
-        most_variable['std_total'] = most_variable[['std_r', 'std_g', 'std_b']].mean(axis=1)
-        # Sort by highest variability
-        top_var = most_variable.sort_values('std_total', ascending=False).head(10)
-        print("Top 10 Most Variable Flags:")
-        print(top_var[['country', 'std_total']])
-
-    def find_brightest_and_darkest_flags(self):
-        # Sort by brightness to get top and bottom 5 flags
-        brightest = self._df.sort_values('brightness', ascending=False).head(5)
-        darkest = self._df.sort_values('brightness', ascending=True).head(5)
-        print("Brightest Flags:")
-        print(brightest[['country', 'brightness']])
-        print("\nDarkest Flags:")
-        print(darkest[['country', 'brightness']])
-
-    def plot_dominant_color_pie(self):
-        # Plot a pie chart showing the proportion of dominant colors
-        counts = self._df['dominant_color'].value_counts()
-
-        plt.figure(figsize=(6, 6))
-        plt.pie(
-            counts,
-            labels=counts.index,
-            autopct='%1.1f%%',
-            startangle=140,
-            colors=['red', 'green', 'blue']
-        )
-        plt.title('Dominant Colors Distribution')
-        plt.axis('equal')  # Ensure pie is a circle
-        plt.show()
-
-    def has_symbol_display(self):
-        symbol_counts = self._df['has_symbol'].value_counts().sort_index()
-
-        # Bar chart
-        plt.figure(figsize=(6, 4))
-        sns.countplot(x='has_symbol', data=self._df, palette='Set2', order=[0.0, 0.5, 1.0])
-        plt.xticks([0, 1, 2], ['No Symbol (0)', 'Partial Detection (0.5)', 'Has Symbol (1)'])
-        plt.title('Number of Flags With and Without Symbols')
-        plt.xlabel('Symbol Detection Level')
-        plt.ylabel('Number of Flags')
-        plt.show()
-
-        # Pie chart
-        labels = ['No Symbol (0)', 'Partial (0.5)', 'Has Symbol (1)']
-        values = [symbol_counts.get(0.0, 0), symbol_counts.get(0.5, 0), symbol_counts.get(1.0, 0)]
-
-        plt.figure(figsize=(6, 6))
-        plt.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, colors=['skyblue', 'gold', 'salmon'])
-        plt.title('Proportion of Flags by Symbol Detection')
-        plt.axis('equal')
-        plt.show()
-
-    def plot_color_palette_grid(self, grid_size=(10, 10)):
-        # Display a grid of flags with their dominant color as the background
-        fig, axarr = plt.subplots(*grid_size, figsize=(16, 10))
-        sorted_df = self._df.sort_values('colorfulness', ascending=False).reset_index()
-        for i in range(grid_size[0]):
-            for j in range(grid_size[1]):
-                idx = i * grid_size[1] + j
-                if idx >= len(sorted_df):
-                    axarr[i, j].axis('off')
-                    continue
-                country = sorted_df.loc[idx, 'country']
-                color = (
-                    sorted_df.loc[idx, 'mean_r']/255,
-                    sorted_df.loc[idx, 'mean_g']/255,
-                    sorted_df.loc[idx, 'mean_b']/255
-                )
-                axarr[i, j].set_facecolor(color)
-                axarr[i, j].text(0.5, 0.5, country, color='black', ha='center', va='center', fontsize=7)
-                axarr[i, j].set_xticks([])
-                axarr[i, j].set_yticks([])
-        plt.suptitle('Flag Color Palette Grid', fontsize=16)
-        plt.tight_layout()
-        plt.show()
-
-    def plot_symbol_vs_colorfulness_boxplot(self):
-        # Boxplot of colorfulness grouped by symbol presence
-        plt.figure(figsize=(8, 5))
-        sns.boxplot(x='has_symbol', y='colorfulness', data=self._df, palette='Set2')
-        plt.xticks([0, 1, 2], ['No Symbol (0)', 'Partial (0.5)', 'Has Symbol (1)'])
-        plt.title('Symbol Presence vs. Colorfulness')
-        plt.xlabel('Symbol Presence')
-        plt.ylabel('Colorfulness')
-        plt.show()
-
-```
-
 ### DataAnalyzer Class
 
 The `DataAnalyzer` class is responsible for performing statistical analysis and transformations on the DataFrame of extracted flag features. It handles data summarization, filtering, enhancement, and visualization of key relationships.
@@ -519,67 +183,6 @@ The `DataAnalyzer` class is responsible for performing statistical analysis and 
   Returns the internal DataFrame `_df` for use by other classes (e.g., `Visualizer`).
 
 
-```python
-# -------------------------
-# DataAnalyzer Class
-# -------------------------
-class DataAnalyzer:
-    def __init__(self, df):
-        self._df = df  # protected, accessible to other classes if needed, but not public API
-
-    def describe_data(self):
-        # Returns basic statistical summary of the dataset
-        if self._df.empty:
-            return "No data to describe. Please check if any images were successfully loaded."
-        return self._df.describe()
-
-    def filter_colorful_flags(self, threshold=150):
-        # Filters and returns flags with colorfulness above the given threshold
-        return self._df[self._df['colorfulness'] > threshold]
-
-    def add_brightness_column(self):
-        # Adds a new column to the DataFrame, average brightness based on RGB means
-        if not self._df.empty:
-            self._df['brightness'] = (self._df['mean_r'] + self._df['mean_g'] + self._df['mean_b']) / 3
-
-    def plot_correlation_matrix(self):
-        # Plots a correlation heatmap for core color and shape metrics
-        if not self._df.empty:
-            plt.figure(figsize=(10, 8))
-            corr = self._df[['mean_r', 'mean_g', 'mean_b', 'colorfulness', 'brightness', 'aspect_ratio']].corr()
-            sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f")
-            plt.title("Correlation Matrix")
-            plt.show()
-        else:
-            print("DataFrame is empty. Cannot plot correlation matrix.")
-
-    def find_dominant_colors(self):
-        # Identifies and visualizes the dominant color for each flag (R/G/B)
-        if not self._df.empty:
-            def dominant_color(row):
-                mean_colors = {'Red': row['mean_r'], 'Green': row['mean_g'], 'Blue': row['mean_b']}
-                return max(mean_colors, key=mean_colors.get)
-
-            self._df['dominant_color'] = self._df.apply(dominant_color, axis=1)
-
-            print("Dominant Color Counts:")
-            print(self._df['dominant_color'].value_counts())
-
-            plt.figure(figsize=(6, 4))
-            sns.countplot(x='dominant_color', data=self._df, palette='Set2')
-            plt.title('Dominant Colors among Flags')
-            plt.xlabel('Dominant Color')
-            plt.ylabel('Number of Flags')
-            plt.show()
-        else:
-            print("DataFrame is empty. Cannot determine dominant colors.")
-
-    def get_dataframe(self):
-        # Returns the internal dataframe
-        return self._df
-
-```
-
 ### Utility Functions for Flag Analysis Pipeline
 
 These functions orchestrate the end-to-end flow of the project, from loading and preprocessing flag images to analyzing extracted features.
@@ -618,49 +221,6 @@ These functions orchestrate the end-to-end flow of the project, from loading and
 - **Returns**: An instance of the `DataAnalyzer` class for further exploration.
 
 
-```python
-# Step 1: Load everything
-def load_data():
-    data_loader = DataLoader('./flags/all_flags', './flags/countries.json')
-    data_loader.load_images()
-    images, image_names = data_loader.get_data()
-    return images, image_names
-
-# Step 2: Extract features
-def extract_features(images, image_names):
-    extractor = FeatureExtractor(images, image_names)
-    return extractor.extract_features()
-
-# Step 3: Analyze
-def analyze(features_df):
-    analyzer = DataAnalyzer(features_df)
-    print(analyzer.describe_data())
-    analyzer.add_brightness_column()
-    colorful = analyzer.filter_colorful_flags()
-    print(f"Colorful Flags (>150):\n{colorful[['country', 'colorfulness']]}")
-    return analyzer
-```
-
-
-```python
-#Load flag images and their corresponding country names and extract visual features from the images
-images, image_names = load_data()
-features_df = extract_features(images, image_names)
-```
-
-    /Users/agrigoryan/anaconda3/lib/python3.11/site-packages/PIL/Image.py:996: UserWarning: Palette images with Transparency expressed in bytes should be converted to RGBA images
-      warnings.warn(
-    
-
-
-```python
-#Analyze the extracted features such as describe stats, add brightness and filter colorful flags
-analyzer = DataAnalyzer(features_df)  
-analyzer.add_brightness_column()
-print(analyzer.describe_data())
-# Initialize the visualizer with the analyzed DataFrame for plotting and exploration
-viz = Visualizer(analyzer.get_dataframe())
-```
 
                mean_r      mean_g      mean_b       std_r       std_g       std_b  \
     count  195.000000  195.000000  195.000000  195.000000  195.000000  195.000000   
@@ -717,24 +277,10 @@ These flags tend to use multiple vivid colors or highly saturated patterns.
 ### Summary
 
 The dataset shows that most world flags are highly colorful, frequently red-dominant, and over 60 percent contain symbolic elements like icons, shields, or emblems.
-
-
-
-```python
-viz.plot_histograms()
-```
-
-
-    
+   
 ![png](README_files/README_14_0.png)
-    
 
-
-
-    
 ![png](README_files/README_14_1.png)
-    
-
 
 ### Histogram of Colorfulness
 
@@ -759,13 +305,6 @@ This plot displays the distribution of average brightness values, calculated as 
 - Flags with lower brightness values (50–90) are more frequent than very bright ones, indicating that darker colors are widely used.
 
 **Conclusion**: While flags are often colorful, they tend to favor medium to dark brightness levels rather than being extremely bright or washed out.
-
-
-
-```python
-viz.plot_relationships()
-```
-
 
     
 ![png](README_files/README_16_0.png)
@@ -802,14 +341,6 @@ This matrix of scatter plots and histograms allows exploration of **pairwise rel
   - Moderate correlations among the RGB means, suggesting that colorful flags often use all channels but not uniformly.
 
 **Conclusion**: Colorfulness is strongly driven by the combined intensity of RGB components, and there's visible structure in how color values co-occur across flags.
-
-
-
-```python
-viz.plot_top_flags()
-```
-
-
     
 ![png](README_files/README_18_0.png)
     
@@ -846,14 +377,6 @@ This chart displays the flags with the highest **colorfulness**, calculated as t
 ---
 
 **Insight**: Several flags appear in both charts, suggesting a **positive relationship between brightness and colorfulness**, which was also supported by earlier scatter plots.
-
-
-
-```python
-analyzer.plot_correlation_matrix()
-analyzer.find_dominant_colors()
-```
-
 
     
 ![png](README_files/README_20_0.png)
@@ -904,11 +427,6 @@ The bar chart and counts reveal the frequency of each dominant color (based on w
 **Conclusion**: Red is by far the most used dominant color in world flags, likely due to its high visibility, cultural significance, and historical symbolism. Blue and green, while still present, are less frequently the primary color in flag designs.
 
 
-
-```python
-viz.find_top_red_flags()
-```
-
     Top 10 Red Dominant Flags:
                                country    mean_r
     110                      Indonesia  255.0000
@@ -948,11 +466,6 @@ The following countries have the highest average red channel intensity (`mean_r`
 Red is a powerful design choice, often used for its visual dominance, symbolism of strength or bravery, and national identity.
 
 
-
-```python
-viz.find_top_blue_flags()
-```
-
     Top 10 Blue Dominant Flags:
                                  country    mean_b
     93                          Honduras  236.7796
@@ -977,14 +490,6 @@ This table highlights the flags with the highest average blue channel intensity 
 **Conclusion**:
 Blue is frequently associated with **peace**, **freedom**, and **oceanic or sky symbolism**, which explains its presence in many national flags, particularly from the Americas and island nations.
 
-
-
-```python
-viz.cluster_flags()
-```
-
-    /Users/agrigoryan/anaconda3/lib/python3.11/site-packages/sklearn/cluster/_kmeans.py:1412: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
-      super()._check_params_vs_input(X, default_n_init=10)
     
 
     Cluster Assignments:
@@ -1031,10 +536,6 @@ This clustering offers insight into how countries' flags group visually based on
 
 
 
-```python
-viz.find_most_variable_flags()
-```
-
     Top 10 Most Variable Flags:
                       country   std_total
     100              Slovenia  118.693865
@@ -1060,11 +561,6 @@ This list ranks flags based on their overall color variability, calculated as th
 #### Conclusion:
 Color variability is often linked to the **complexity and richness of flag designs**. Flags with high variability tend to use multiple strong colors or include intricate emblems and symbols.
 
-
-
-```python
-viz.find_brightest_and_darkest_flags()
-```
 
     Brightest Flags:
                                country  brightness
@@ -1097,14 +593,6 @@ The following tables display the top 5 brightest and darkest flags, based on the
 
 #### Conclusion
 The brightness distribution highlights global contrasts in flag design philosophies, from minimalist white-dominated layouts to bold, darker themes representing strength or identity.
-
-
-
-```python
-viz.plot_dominant_color_pie()
-```
-
-
     
 ![png](README_files/README_32_0.png)
     
@@ -1126,19 +614,7 @@ The pie chart shows the proportion of flags where red, green, or blue is the **d
 #### Conclusion:
 The analysis highlights how **red is the most favored dominant color globally**, shaping the visual and cultural identity of most national flags.
 
-
-
-```python
-print(" Flags and Symbol Detection (1 = symbol present, 0 = no symbol):")
-df = pd.DataFrame(features_df[['country', 'has_symbol']])
-df.tail(20)
-```
-
      Flags and Symbol Detection (1 = symbol present, 0 = no symbol):
-    
-
-
-
 
 <div>
 <style scoped>
@@ -1279,11 +755,6 @@ This table shows the **symbol detection status** for the last 20 flags in the da
 - **0.0** — **No symbol detected** (both tests failed).
 
 
-```python
-viz.has_symbol_display()
-```
-
-
     
 ![png](README_files/README_36_0.png)
     
@@ -1323,11 +794,6 @@ These results highlight that while a large number of flags use symbols, a signif
 
 
 
-```python
-viz.plot_color_palette_grid()
-```
-
-
     
 ![png](README_files/README_38_0.png)
     
@@ -1356,13 +822,6 @@ This visualization presents a compact and aesthetic overview of flag colors by m
 ---
 
 This grid complements statistical plots by giving an **intuitive visual sense** of flag datasets.
-
-
-
-```python
-viz.plot_symbol_vs_colorfulness_boxplot()
-```
-
 
     
 ![png](README_files/README_40_0.png)
